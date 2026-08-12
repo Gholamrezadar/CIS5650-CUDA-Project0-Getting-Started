@@ -1,13 +1,22 @@
-Project 0 Getting Started
-====================
+# Project 0 Getting Started
 
 **University of Pennsylvania, CIS 5650: GPU Programming and Architecture, Project 0**
 
-* (TODO) YOUR NAME HERE
-  * (TODO) [LinkedIn](), [personal website](), [twitter](), etc.
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+- Gholamreza Dar
+- Tested on: Windows 11, i5-14600KF @ 3.5GHz 16GB, RTX 5060 8GB SM 12.0 (Personal)
 
-### (TODO: Your README)
+## 1. Cuda GL Check
 
-Include screenshots, analysis, etc. (Remember, this is public, so don't put
-anything here that you don't want to share with the world.)
+- [x] WebGL 1, 2
+- [x] WebGPU
+- [x] OpenGL
+- [x] CUDA
+
+![demo](images/5060-SM12.0.png)
+
+Color verification: Major 12, Minor 0 (Magenta, White)
+![colors](images/colors.png)
+
+## 2. Cuda Introduction
+
+TODO
