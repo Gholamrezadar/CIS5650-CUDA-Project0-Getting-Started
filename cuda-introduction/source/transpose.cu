@@ -52,17 +52,17 @@ __global__ void matrixTransposeNaive(const float* const a, float* const b, const
 
 int main(int argc, char *argv[])
 {
-    // TODO 1: Initialize sizes. Start with simple like 32 x 32.
+    // 1: Initialize sizes. Start with simple like 32 x 32.
     // TODO Optional: Try different sizes - both square and non-square. Use these as examples:
     // 1024 x 1024, 2048 x 2048, 64 x 16, 128 x 768, 63 x 63, 31 x 15, 1025 x 1025, 1234 x 3153
-    const unsigned sizeX = 1234;
-    const unsigned sizeY = 3153;
+    const unsigned sizeX = 32;
+    const unsigned sizeY = 64;
 
     // LOOK: Allocate host arrays. The gold arrays are used to store the results from CPU.
     float* a = new float[sizeX * sizeY];
     float* b = new float[sizeX * sizeY];
-    float* a_gold = new float[sizeX * sizeY];
-    float* b_gold = new float[sizeX * sizeY];
+    float* copy_gold = new float[sizeX * sizeY];
+    float* transpose_gold = new float[sizeX * sizeY];
 
     // Fill matrix A
     for (unsigned i = 0; i < sizeX * sizeY; i++)
@@ -73,17 +73,20 @@ int main(int argc, char *argv[])
     {
         for (unsigned ii = 0; ii < sizeX; ii++)
         {
-            a_gold[jj * sizeX + ii] = a[jj * sizeX + ii]; // Reference for copy kernel
-            b_gold[ii * sizeY + jj] = a[jj * sizeX + ii]; // Reference for transpose kernel
+            copy_gold[jj * sizeX + ii] = a[jj * sizeX + ii]; // Reference for copy kernel
+            transpose_gold[ii * sizeY + jj] = a[jj * sizeX + ii]; // Reference for transpose kernel
         }
     }
 
     // Device arrays
     float *d_a, *d_b;
 
-    // TODO 2: Allocate memory on the device for d_a and d_b.
+    // 2: Allocate memory on the device for d_a and d_b.
+	CUDA(cudaMalloc((void**)&d_a, sizeX * sizeY * sizeof(float)));
+	CUDA(cudaMalloc((void**)&d_b, sizeX * sizeY * sizeof(float)));
 
-    // TODO 3: Copy array contents of A from the host (CPU) to the device (GPU)
+    // 3: Copy array contents of A from the host (CPU) to the device (GPU)
+    CUDA(cudaMemcpy(d_a, a, sizeX * sizeY, cudaMemcpyHostToDevice));
 
     CUDA(cudaDeviceSynchronize());
 
@@ -103,10 +106,11 @@ int main(int argc, char *argv[])
         // LOOK: Launch the copy kernel
         copyKernel<<<dims.dimGrid, dims.dimBlock>>>(d_a, d_b, sizeX, sizeY);
 
-        // TODO 5: copy the answer back to the host (CPU) from the device (GPU)
+        // 5: copy the answer back to the host (CPU) from the device (GPU)
+		CUDA(cudaMemcpy(b, d_b, sizeX * sizeY, cudaMemcpyDeviceToHost));
 
         // LOOK: Use compareReferenceAndResult to check the result
-        compareReferenceAndResult(a_gold, b, sizeX * sizeY);
+        compareReferenceAndResult(copy_gold, b, sizeX * sizeY);
     }
     std::cout << "****************************************************" << std::endl << std::endl;
     ////////////////////////////////////////////////////////////
@@ -124,18 +128,21 @@ int main(int argc, char *argv[])
         dims.dimBlock = dim3(1, 1, 1);
         dims.dimGrid = dim3(1, 1, 1);
 
-        // TODO 9: Launch the matrix transpose kernel
-        // matrixTransposeNaive<<<>>>(......);
+        // 9: Launch the matrix transpose kernel
+        matrixTransposeNaive<<<dims.dimGrid, dims.dimBlock>>>(d_a, d_b, sizeX, sizeY);
 
-        // TODO 10: copy the answer back to the host (CPU) from the device (GPU)
+        // 10: copy the answer back to the host (CPU) from the device (GPU)
+		CUDA(cudaMemcpy(b, d_b, sizeX * sizeY, cudaMemcpyDeviceToHost));
 
         // LOOK: Use compareReferenceAndResult to check the result
-        compareReferenceAndResult(b_gold, b, sizeX * sizeY);
+        compareReferenceAndResult(transpose_gold, b, sizeX * sizeY);
     }
     std::cout << "****************************************************" << std::endl << std::endl;
     ////////////////////////////////////////////////////////////
 
     // TODO 7: free device memory using cudaFree
+    CUDA(cudaFree(d_a));
+    CUDA(cudaFree(d_b));
 
     // free host memory
     delete[] a;
