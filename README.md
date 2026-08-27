@@ -71,4 +71,34 @@ Result = PAS
 
 ## 2. Cuda Introduction
 
+### SAXPY (Single Precision AX+Y)
+
+![saxpy](images/saxpy_passed.png)
+
+### Copy and Transpose
+
+![copy_and_transpose_passed](images/copy_transpose_passed.png)
+
+A mistake I made that cost me an hour of debugging was forgetting to multiply array size by `sizeof(float)` in `cudaMemCpy`!
+
+```C
+CUDA(cudaMemcpy(d_a, a, sizeX * sizeY * sizeof(float), cudaMemcpyHostToDevice));
+```
+
+This results in no error or warning, the kernel runs correctly as well, but only the first 1/4 of the array is read from and written to.
+
+I also made this visualization for understanding and debugging the cell positions using Claude.
+
+Its available in the `/visualizations` dir.
+
+![cell_viz](images/cuda_pos_viz.png)
+
+### Matmul
+
+#### Naive
+
+TODO
+
+#### Tiled
+
 TODO
