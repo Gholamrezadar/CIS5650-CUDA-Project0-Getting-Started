@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUDA Tiled Matrix Multiplication Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&display=swap');
+
+  :root {
+    --kimi-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --kimi-chart-1: #2563eb;
+    --kimi-chart-2: #dc2626;
+    --kimi-chart-3: #16a34a;
+    --kimi-chart-4: #7c3aed;
+    --kimi-color-text-primary: #f5f1e8;
+    --kimi-color-text-secondary: #d1cbc1;
+    --kimi-color-text-quaternary: #a39d94;
+    --kimi-color-divider: #514c45;
+    --kimi-color-surface: #1f1e1b;
+    --kimi-color-surface-hover: #34312d;
+    --t-fast: 150ms;
+    --t-normal: 250ms;
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  }
+  body {
+    font-family: var(--kimi-font-sans);
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    background: #171614;
+    color: var(--kimi-color-text-primary);
+  }
+  .mm-root {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    border: 1px solid var(--kimi-color-divider);
+    border-radius: 14px;
+    background: var(--kimi-color-surface);
+  }
+  .mm-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--kimi-color-divider);
+  }
+  .mm-tab {
+    padding: 8px 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--kimi-color-text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: all var(--t-fast) var(--ease-out);
+    font-family: var(--kimi-font-sans);
+  }
+  .mm-tab:hover {
+    color: var(--kimi-color-text-primary);
+  }
+  .mm-tab.active {
+    color: var(--kimi-color-text-primary);
+    border-bottom-color: var(--kimi-color-text-primary);
+  }
+  .mm-panel {
+    display: none;
+  }
+  .mm-panel.active {
+    display: block;
+  }
+  .mm-layout {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    justify-content: center;
+    gap: 28px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .mm-mat-label {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--kimi-color-text-primary);
+  }
+  .mm-matrix {
+    display: grid;
+    grid-template-columns: repeat(4, 44px);
+    grid-template-rows: repeat(4, 44px);
+    gap: 3px;
+    justify-content: center;
+  }
+  .mm-cell {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1.5px solid transparent;
+    transition: background 550ms var(--ease-out), border-color 550ms var(--ease-out), box-shadow 550ms var(--ease-out), opacity 550ms var(--ease-out), color 550ms var(--ease-out);
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-cell.a { background: color-mix(in srgb, var(--kimi-chart-1) 18%, transparent); border-color: color-mix(in srgb, var(--kimi-chart-1) 35%, transparent); color: var(--kimi-color-text-primary); }
+  .mm-cell.b { background: color-mix(in srgb, var(--kimi-chart-2) 18%, transparent); border-color: color-mix(in srgb, var(--kimi-chart-2) 35%, transparent); color: var(--kimi-color-text-primary); }
+  .mm-cell.c { background: color-mix(in srgb, var(--kimi-chart-3) 18%, transparent); border-color: color-mix(in srgb, var(--kimi-chart-3) 35%, transparent); color: var(--kimi-color-text-primary); }
+  .mm-cell.dim { opacity: 0.25; }
+  .mm-cell.highlight-a { background: var(--kimi-chart-1); color: white; border-color: var(--kimi-chart-1); box-shadow: 0 0 0 2px color-mix(in srgb, var(--kimi-chart-1) 30%, transparent); }
+  .mm-cell.highlight-b { background: var(--kimi-chart-2); color: white; border-color: var(--kimi-chart-2); box-shadow: 0 0 0 2px color-mix(in srgb, var(--kimi-chart-2) 30%, transparent); }
+  .mm-cell.highlight-c { background: var(--kimi-chart-3); color: white; border-color: var(--kimi-chart-3); box-shadow: 0 0 0 2px color-mix(in srgb, var(--kimi-chart-3) 30%, transparent); }
+  .mm-cell.source-a { background: color-mix(in srgb, var(--kimi-chart-1) 42%, var(--kimi-color-surface)); border-color: var(--kimi-chart-1); }
+  .mm-cell.source-b { background: color-mix(in srgb, var(--kimi-chart-2) 42%, var(--kimi-color-surface)); border-color: var(--kimi-chart-2); }
+  .mm-cell.shared-a { background: var(--kimi-chart-4); color: white; border-color: var(--kimi-chart-4); }
+  .mm-cell.shared-b { background: #d97706; color: white; border-color: #d97706; }
+  .mm-cell.outline-tile { outline: 2px dashed var(--kimi-color-text-primary); outline-offset: 2px; }
+  .mm-cell.highlight-a, .mm-cell.highlight-b, .mm-cell.highlight-c,
+  .mm-s-cell.active, .mm-s-cell.active-b { animation: mm-highlight-in 550ms var(--ease-out); }
+  @keyframes mm-highlight-in {
+    from { opacity: 0.35; transform: scale(0.94); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .mm-op {
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--kimi-color-text-secondary);
+    text-align: center;
+  }
+  .mm-c-panel {
+    display: flex;
+    justify-content: center;
+    margin-top: 16px;
+  }
+  .mm-c-matrix {
+    display: grid;
+    grid-template-columns: repeat(4, 44px);
+    grid-template-rows: repeat(4, 44px);
+    gap: 3px;
+  }
+  .mm-c-label {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--kimi-color-text-primary);
+  }
+  .mm-controls {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+  .mm-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--kimi-color-divider);
+    background: var(--kimi-color-surface);
+    color: var(--kimi-color-text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--t-fast) var(--ease-out);
+    font-family: var(--kimi-font-sans);
+  }
+  .mm-btn:hover:not(:disabled) {
+    background: var(--kimi-color-surface-hover);
+    border-color: var(--kimi-color-text-secondary);
+  }
+  .mm-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .mm-btn.primary {
+    background: var(--kimi-color-text-primary);
+    color: var(--kimi-color-surface);
+    border-color: var(--kimi-color-text-primary);
+  }
+  .mm-btn.primary:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+  .mm-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(76px, auto));
+    width: fit-content;
+    max-width: 100%;
+    gap: 8px;
+    margin: 16px auto 12px;
+  }
+  .mm-stat {
+    text-align: center;
+    padding: 6px 14px;
+  }
+  .mm-stat-value {
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .mm-stat-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--kimi-color-text-secondary);
+    letter-spacing: 0.06em;
+    margin-top: 5px;
+    text-transform: uppercase;
+  }
+  .mm-stat.global .mm-stat-value { color: #e07a5f; }
+  .mm-stat.shared .mm-stat-value { color: #d97757; }
+  .mm-stat.total .mm-stat-value { color: #f5f1e8; }
+  .mm-guide {
+    background: color-mix(in srgb, var(--kimi-color-text-quaternary) 8%, transparent);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-top: 16px;
+    border: 1px solid var(--kimi-color-divider);
+  }
+  .mm-guide-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--kimi-color-text-primary);
+  }
+  .mm-guide-text {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--kimi-color-text-secondary);
+  }
+  .mm-step-counter {
+    text-align: center;
+    font-size: 13px;
+    color: var(--kimi-color-text-secondary);
+    margin-top: 4px;
+  }
+  .mm-legend {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .mm-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--kimi-color-text-secondary);
+  }
+  .mm-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+  .mm-tile-overlay {
+    position: relative;
+  }
+  .mm-tile-border {
+    position: absolute;
+    border: 2px dashed var(--kimi-color-text-primary);
+    border-radius: 8px;
+    pointer-events: none;
+    transition: all var(--t-normal) var(--ease-out);
+  }
+  .mm-shared-mem {
+    margin-top: 12px;
+    padding: 0;
+  }
+  .mm-shared-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--kimi-color-text-secondary);
+    margin-bottom: 8px;
+    text-align: center;
+  }
+  .mm-shared-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 40px);
+    grid-template-rows: repeat(2, 40px);
+    gap: 3px;
+    justify-content: center;
+  }
+  .mm-s-cell {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 5px;
+    border: 1.5px solid transparent;
+    transition: all var(--t-fast) var(--ease-out);
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-s-cell.a { background: color-mix(in srgb, var(--kimi-chart-1) 25%, transparent); border-color: color-mix(in srgb, var(--kimi-chart-1) 45%, transparent); color: var(--kimi-color-text-primary); }
+  .mm-s-cell.b { background: color-mix(in srgb, var(--kimi-chart-2) 25%, transparent); border-color: color-mix(in srgb, var(--kimi-chart-2) 45%, transparent); color: var(--kimi-color-text-primary); }
+  .mm-s-cell.active { background: var(--kimi-chart-1); color: white; border-color: var(--kimi-chart-1); }
+  .mm-s-cell.active-b { background: var(--kimi-chart-2); color: white; border-color: var(--kimi-chart-2); }
+  .mm-s-cell.dim { opacity: 0.3; }
+  .mm-bottom-row {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: center;
+    gap: 28px;
+    margin-top: 12px;
+  }
+  .mm-arrow {
+    font-size: 20px;
+    color: var(--kimi-color-text-secondary);
+    text-align: center;
+  }
+  h1 {
+    text-align: center;
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: clamp(24px, 4vw, 32px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 13px;
+    color: var(--kimi-color-text-secondary);
+    margin-bottom: 20px;
+  }
+  @media (max-width: 480px) {
+    body { padding: 1rem 0.5rem; }
+    .mm-root { padding: 1rem 0.75rem; }
+    .mm-stats { gap: 5px; }
+    .mm-stat { padding-inline: 4px; }
+    .mm-stat-label { font-size: 9px; letter-spacing: 0.03em; }
+  }
+</style>
+</head>
+<body>
+
+<div class="mm-root">
+  <h1>CUDA Matrix Multiplication Visualizer</h1>
+  <div class="subtitle">Compare naive global-only vs. tiled shared-memory kernel step by step</div>
+
+  <div class="mm-tabs">
+    <button class="mm-tab active" data-tab="naive" onclick="switchTab('naive')">Naive (global only)</button>
+    <button class="mm-tab" data-tab="tiled" onclick="switchTab('tiled')">Tiled (shared memory)</button>
+  </div>
+
+  <div class="mm-legend">
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:var(--kimi-chart-1)"></div>Matrix A (global)</div>
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:var(--kimi-chart-2)"></div>Matrix B (global)</div>
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:var(--kimi-chart-3)"></div>Matrix C (result)</div>
+    <div class="mm-legend-item" id="legend-shared" style="display:none"><div class="mm-legend-dot" style="background:var(--kimi-chart-4)"></div>Shared memory</div>
+  </div>
+
+  <!-- NAIVE PANEL -->
+  <div class="mm-panel active" id="panel-naive">
+    <div class="mm-layout">
+      <div>
+        <div class="mm-mat-label">Matrix A (4×4)</div>
+        <div class="mm-matrix" id="naive-mat-a"></div>
+      </div>
+      <div class="mm-op">×</div>
+      <div>
+        <div class="mm-mat-label">Matrix B (4×4)</div>
+        <div class="mm-matrix" id="naive-mat-b"></div>
+      </div>
+    </div>
+    <div class="mm-arrow">↓</div>
+    <div class="mm-c-panel">
+      <div>
+        <div class="mm-c-label">Matrix C = A × B</div>
+        <div class="mm-c-matrix" id="naive-mat-c"></div>
+      </div>
+    </div>
+    <div class="mm-stats">
+      <div class="mm-stat global"><div class="mm-stat-value" id="naive-global">0</div><div class="mm-stat-label">Global reads</div></div>
+      <div class="mm-stat shared"><div class="mm-stat-value" id="naive-shared">0</div><div class="mm-stat-label">Shared reads</div></div>
+      <div class="mm-stat total"><div class="mm-stat-value" id="naive-total">0</div><div class="mm-stat-label">Total reads</div></div>
+    </div>
+    <div class="mm-controls">
+      <button class="mm-btn" onclick="naiveStep(-1)" id="naive-prev">← Prev</button>
+      <button class="mm-btn primary" onclick="naiveTogglePlay()" id="naive-play">▶ Play</button>
+      <button class="mm-btn" onclick="naiveStep(1)" id="naive-next">Next →</button>
+      <button class="mm-btn" onclick="naiveReset()">↺ Reset</button>
+    </div>
+    <div class="mm-step-counter" id="naive-step-text">Step 0 of 64</div>
+    <div class="mm-guide">
+      <div class="mm-guide-title" id="naive-guide-title">Ready to start</div>
+      <div class="mm-guide-text" id="naive-guide-text">Each thread computes one element of C by reading entire rows of A and columns of B from global memory. Click "Next" or "Play" to begin.</div>
+    </div>
+  </div>
+
+  <!-- TILED PANEL -->
+  <div class="mm-panel" id="panel-tiled">
+    <div class="mm-layout">
+      <div>
+        <div class="mm-mat-label">Matrix A (4×4) — tiled</div>
+        <div class="mm-matrix" id="tiled-mat-a"></div>
+      </div>
+      <div class="mm-op">×</div>
+      <div>
+        <div class="mm-mat-label">Matrix B (4×4) — tiled</div>
+        <div class="mm-matrix" id="tiled-mat-b"></div>
+      </div>
+    </div>
+    <div class="mm-bottom-row">
+      <div class="mm-shared-mem">
+        <div class="mm-shared-title">Shared A tile (2×2)</div>
+        <div class="mm-shared-grid" id="tiled-shared-a"></div>
+      </div>
+      <div class="mm-shared-mem">
+        <div class="mm-shared-title">Shared B tile (2×2)</div>
+        <div class="mm-shared-grid" id="tiled-shared-b"></div>
+      </div>
+    </div>
+    <div class="mm-arrow">↓</div>
+    <div class="mm-c-panel">
+      <div>
+        <div class="mm-c-label">Matrix C = A × B (block results)</div>
+        <div class="mm-c-matrix" id="tiled-mat-c"></div>
+      </div>
+    </div>
+    <div class="mm-stats">
+      <div class="mm-stat global"><div class="mm-stat-value" id="tiled-global">0</div><div class="mm-stat-label">Global reads</div></div>
+      <div class="mm-stat shared"><div class="mm-stat-value" id="tiled-shared">0</div><div class="mm-stat-label">Shared reads</div></div>
+      <div class="mm-stat total"><div class="mm-stat-value" id="tiled-total">0</div><div class="mm-stat-label">Total reads</div></div>
+    </div>
+    <div class="mm-controls">
+      <button class="mm-btn" onclick="tiledStep(-1)" id="tiled-prev">← Prev</button>
+      <button class="mm-btn primary" onclick="tiledTogglePlay()" id="tiled-play">▶ Play</button>
+      <button class="mm-btn" onclick="tiledStep(1)" id="tiled-next">Next →</button>
+      <button class="mm-btn" onclick="tiledReset()">↺ Reset</button>
+    </div>
+    <div class="mm-step-counter" id="tiled-step-text">Step 0 of 32</div>
+    <div class="mm-guide">
+      <div class="mm-guide-title" id="tiled-guide-title">Ready to start</div>
+      <div class="mm-guide-text" id="tiled-guide-text">Threads in a 2×2 block cooperate: load tiles into fast shared memory, then reuse them. Click "Next" or "Play" to begin.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Matrix data
+const A = [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16]];
+const B = [[1,0,1,0],[0,1,0,1],[1,0,1,0],[0,1,0,1]];
+const C = Array(4).fill().map((_,i)=>Array(4).fill().map((_,j)=>A[i].reduce((s,_,k)=>s+A[i][k]*B[k][j],0)));
+
+const TILE = 2;
+const N = 4;
+
+// Naive state
+let naiveStepIdx = 0;
+let naivePlaying = false;
+let naiveTimer = null;
+const naiveTotalSteps = N * N * N;
+
+// Tiled state
+let tiledStepIdx = 0;
+let tiledPlaying = false;
+let tiledTimer = null;
+const tiledEvents = [];
+
+// Build tiled events
+for (let by = 0; by < 2; by++) {
+  for (let bx = 0; bx < 2; bx++) {
+    for (let phase = 0; phase < 2; phase++) {
+      tiledEvents.push({type:'loadA', by, bx, phase});
+      tiledEvents.push({type:'loadB', by, bx, phase});
+      for (let ty = 0; ty < TILE; ty++) {
+        for (let tx = 0; tx < TILE; tx++) {
+          for (let k = 0; k < TILE; k++) {
+            tiledEvents.push({type:'compute', by, bx, phase, ty, tx, k});
+          }
+        }
+      }
+    }
+  }
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function createMatrix(container, mat, clsPrefix, idPrefix) {
+  container.innerHTML = '';
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const cell = el('div', `mm-cell ${clsPrefix}`, mat[i][j]);
+      cell.id = `${idPrefix}-${i}-${j}`;
+      container.appendChild(cell);
+    }
+  }
+}
+
+function createSharedGrid(container, values, clsPrefix, idPrefix) {
+  container.innerHTML = '';
+  for (let i = 0; i < TILE; i++) {
+    for (let j = 0; j < TILE; j++) {
+      const cell = el('div', `mm-s-cell ${clsPrefix}`, values[i][j]);
+      cell.id = `${idPrefix}-${i}-${j}`;
+      container.appendChild(cell);
+    }
+  }
+}
+
+createMatrix(document.getElementById('naive-mat-a'), A, 'a', 'na');
+createMatrix(document.getElementById('naive-mat-b'), B, 'b', 'nb');
+createMatrix(document.getElementById('naive-mat-c'), C.map(r=>r.map(()=>'?')), 'c', 'nc');
+
+createMatrix(document.getElementById('tiled-mat-a'), A, 'a', 'ta');
+createMatrix(document.getElementById('tiled-mat-b'), B, 'b', 'tb');
+createMatrix(document.getElementById('tiled-mat-c'), C.map(r=>r.map(()=>'?')), 'c', 'tc');
+createSharedGrid(document.getElementById('tiled-shared-a'), [[0,0],[0,0]], 'a', 'tsa');
+createSharedGrid(document.getElementById('tiled-shared-b'), [[0,0],[0,0]], 'b', 'tsb');
+
+function switchTab(tab) {
+  document.querySelectorAll('.mm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.mm-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+  document.getElementById('legend-shared').style.display = tab === 'tiled' ? 'flex' : 'none';
+}
+
+// NAIVE LOGIC
+function renderNaive() {
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      document.getElementById(`na-${i}-${j}`).className = 'mm-cell a';
+      document.getElementById(`nb-${i}-${j}`).className = 'mm-cell b';
+      document.getElementById(`nc-${i}-${j}`).className = 'mm-cell c';
+    }
+  }
+
+  if (naiveStepIdx === 0) {
+    document.getElementById('naive-global').textContent = '0';
+    document.getElementById('naive-shared').textContent = '0';
+    document.getElementById('naive-total').textContent = '0';
+    document.getElementById('naive-step-text').textContent = `Step 0 of ${naiveTotalSteps}`;
+    document.getElementById('naive-guide-title').textContent = 'Ready to start';
+    document.getElementById('naive-guide-text').textContent = 'Each thread computes one element of C by reading entire rows of A and columns of B from global memory. There are 16 threads × 4 iterations = 64 steps.';
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) document.getElementById(`nc-${i}-${j}`).textContent = '?';
+    document.getElementById('naive-prev').disabled = true;
+    document.getElementById('naive-next').disabled = false;
+    return;
+  }
+
+  let globalReads = 0;
+  let sharedReads = 0;
+  const cValues = Array(4).fill().map(()=>Array(4).fill(0));
+  const cComputed = Array(4).fill().map(()=>Array(4).fill(false));
+
+  const step = naiveStepIdx;
+  const threadIdx = Math.floor((step - 1) / N);
+  const k = (step - 1) % N;
+  const ti = Math.floor(threadIdx / N);
+  const tj = threadIdx % N;
+
+  for (let s = 1; s <= step; s++) {
+    const tIdx = Math.floor((s - 1) / N);
+    const kk = (s - 1) % N;
+    const ii = Math.floor(tIdx / N);
+    const jj = tIdx % N;
+    cValues[ii][jj] += A[ii][kk] * B[kk][jj];
+    globalReads += 2;
+  }
+
+  for (let s = 1; s <= step; s++) {
+    const tIdx = Math.floor((s - 1) / N);
+    const ii = Math.floor(tIdx / N);
+    const jj = tIdx % N;
+    if ((s % N) === 0) cComputed[ii][jj] = true;
+  }
+
+  document.getElementById(`na-${ti}-${k}`).classList.add('highlight-a');
+  document.getElementById(`nb-${k}-${tj}`).classList.add('highlight-b');
+  document.getElementById(`nc-${ti}-${tj}`).classList.add('highlight-c');
+
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      if (i !== ti || j !== k) document.getElementById(`na-${i}-${j}`).classList.add('dim');
+      if (i !== k || j !== tj) document.getElementById(`nb-${i}-${j}`).classList.add('dim');
+      if (i !== ti || j !== tj) document.getElementById(`nc-${i}-${j}`).classList.add('dim');
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const cell = document.getElementById(`nc-${i}-${j}`);
+      if (cComputed[i][j] || (i === ti && j === tj)) {
+        cell.textContent = cValues[i][j];
+      } else {
+        cell.textContent = '?';
+      }
+    }
+  }
+
+  document.getElementById('naive-global').textContent = globalReads;
+  document.getElementById('naive-shared').textContent = sharedReads;
+  document.getElementById('naive-total').textContent = globalReads + sharedReads;
+  document.getElementById('naive-step-text').textContent = `Step ${step} of ${naiveTotalSteps}`;
+
+  const threadName = `thread[${ti},${tj}]`;
+  document.getElementById('naive-guide-title').textContent = `${threadName} — iteration k=${k}`;
+  document.getElementById('naive-guide-text').textContent = 
+    `${threadName} reads A[${ti}][${k}] = ${A[ti][k]} and B[${k}][${tj}] = ${B[k][tj]} from global memory, multiplies and accumulates into C[${ti}][${tj}]. ` +
+    `Each multiply needs 2 global reads. No shared memory is used.`;
+
+  document.getElementById('naive-prev').disabled = step <= 0;
+  document.getElementById('naive-next').disabled = step >= naiveTotalSteps;
+}
+
+function naiveStep(dir) {
+  naiveStepIdx = Math.max(0, Math.min(naiveTotalSteps, naiveStepIdx + dir));
+  renderNaive();
+}
+
+function naiveReset() {
+  naiveStepIdx = 0;
+  naivePlaying = false;
+  clearInterval(naiveTimer);
+  document.getElementById('naive-play').textContent = '▶ Play';
+  renderNaive();
+}
+
+function naiveTogglePlay() {
+  naivePlaying = !naivePlaying;
+  document.getElementById('naive-play').textContent = naivePlaying ? '⏸ Pause' : '▶ Play';
+  if (naivePlaying) {
+    naiveTimer = setInterval(() => {
+      if (naiveStepIdx >= naiveTotalSteps) { naiveTogglePlay(); return; }
+      naiveStep(1);
+    }, 600);
+  } else {
+    clearInterval(naiveTimer);
+  }
+}
+
+// TILED LOGIC
+let sharedA = [[0,0],[0,0]];
+let sharedB = [[0,0],[0,0]];
+let tiledC = Array(4).fill().map(()=>Array(4).fill(0));
+
+function renderTiled() {
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      document.getElementById(`ta-${i}-${j}`).className = 'mm-cell a';
+      document.getElementById(`tb-${i}-${j}`).className = 'mm-cell b';
+      document.getElementById(`tc-${i}-${j}`).className = 'mm-cell c';
+    }
+  }
+  for (let i = 0; i < TILE; i++) {
+    for (let j = 0; j < TILE; j++) {
+      document.getElementById(`tsa-${i}-${j}`).className = 'mm-s-cell a';
+      document.getElementById(`tsb-${i}-${j}`).className = 'mm-s-cell b';
+    }
+  }
+
+  if (tiledStepIdx === 0) {
+    document.getElementById('tiled-global').textContent = '0';
+    document.getElementById('tiled-shared').textContent = '0';
+    document.getElementById('tiled-total').textContent = '0';
+    document.getElementById('tiled-step-text').textContent = `Step 0 of ${tiledEvents.length}`;
+    document.getElementById('tiled-guide-title').textContent = 'Ready to start';
+    document.getElementById('tiled-guide-text').textContent = 'Grid: 2×2 blocks. Block size: 2×2 threads. Tile size: 2×2. Each block loads tiles into shared memory, then threads reuse them.';
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) document.getElementById(`tc-${i}-${j}`).textContent = '?';
+    sharedA = [[0,0],[0,0]];
+    sharedB = [[0,0],[0,0]];
+    tiledC = Array(4).fill().map(()=>Array(4).fill(0));
+    updateSharedGrids();
+    document.getElementById('tiled-prev').disabled = true;
+    document.getElementById('tiled-next').disabled = false;
+    return;
+  }
+
+  let globalReads = 0;
+  let sharedReads = 0;
+  tiledC = Array(4).fill().map(()=>Array(4).fill(0));
+  sharedA = [[0,0],[0,0]];
+  sharedB = [[0,0],[0,0]];
+
+  let currentEvent = null;
+
+  for (let s = 0; s < tiledStepIdx; s++) {
+    const ev = tiledEvents[s];
+    currentEvent = ev;
+    if (ev.type === 'loadA') {
+      for (let i = 0; i < TILE; i++) {
+        for (let j = 0; j < TILE; j++) {
+          sharedA[i][j] = A[ev.by * TILE + i][ev.phase * TILE + j];
+        }
+      }
+      globalReads += TILE * TILE;
+    } else if (ev.type === 'loadB') {
+      for (let i = 0; i < TILE; i++) {
+        for (let j = 0; j < TILE; j++) {
+          sharedB[i][j] = B[ev.phase * TILE + i][ev.bx * TILE + j];
+        }
+      }
+      globalReads += TILE * TILE;
+    } else if (ev.type === 'compute') {
+      const row = ev.by * TILE + ev.ty;
+      const col = ev.bx * TILE + ev.tx;
+      tiledC[row][col] += sharedA[ev.ty][ev.k] * sharedB[ev.k][ev.tx];
+      sharedReads += 2;
+    }
+  }
+
+  updateSharedGrids();
+
+  const cComputed = Array(4).fill().map(()=>Array(4).fill(false));
+  for (let s = 0; s < tiledStepIdx; s++) {
+    const ev = tiledEvents[s];
+    if (ev.type === 'compute') {
+      const row = ev.by * TILE + ev.ty;
+      const col = ev.bx * TILE + ev.tx;
+      let isLast = true;
+      for (let ss = s + 1; ss < tiledStepIdx; ss++) {
+        const ev2 = tiledEvents[ss];
+        if (ev2.type === 'compute' && ev2.by === ev.by && ev2.bx === ev.bx && ev2.ty === ev.ty && ev2.tx === ev.tx) {
+          isLast = false; break;
+        }
+      }
+      if (isLast) cComputed[row][col] = true;
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const cell = document.getElementById(`tc-${i}-${j}`);
+      if (cComputed[i][j]) {
+        cell.textContent = tiledC[i][j];
+      } else {
+        cell.textContent = '?';
+      }
+    }
+  }
+
+  const ev = currentEvent;
+  if (ev.type === 'loadA') {
+    for (let i = 0; i < TILE; i++) {
+      for (let j = 0; j < TILE; j++) {
+        const gi = ev.by * TILE + i;
+        const gj = ev.phase * TILE + j;
+        document.getElementById(`ta-${gi}-${gj}`).classList.add('highlight-a');
+        document.getElementById(`ta-${gi}-${gj}`).classList.remove('dim');
+      }
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) document.getElementById(`ta-${i}-${j}`).classList.add('dim');
+    for (let i = 0; i < TILE; i++) for (let j = 0; j < TILE; j++) {
+      const gi = ev.by * TILE + i;
+      const gj = ev.phase * TILE + j;
+      document.getElementById(`ta-${gi}-${gj}`).classList.remove('dim');
+    }
+    for (let i = 0; i < TILE; i++) for (let j = 0; j < TILE; j++) document.getElementById(`tsa-${i}-${j}`).classList.add('active');
+
+    document.getElementById('tiled-guide-title').textContent = `Block[${ev.by},${ev.bx}] — load A tile (phase ${ev.phase})`;
+    document.getElementById('tiled-guide-text').textContent = 
+      `All threads in block[${ev.by},${ev.bx}] cooperatively load a 2×2 tile of A from global memory into shared memory. ` +
+      `This costs ${TILE*TILE} global reads but the data will be reused by all 4 threads in the block.`;
+  } else if (ev.type === 'loadB') {
+    for (let i = 0; i < TILE; i++) for (let j = 0; j < TILE; j++) {
+      const gi = ev.by * TILE + i;
+      const gj = ev.phase * TILE + j;
+      document.getElementById(`ta-${gi}-${gj}`).classList.add('source-a');
+    }
+    for (let i = 0; i < TILE; i++) {
+      for (let j = 0; j < TILE; j++) {
+        const gi = ev.phase * TILE + i;
+        const gj = ev.bx * TILE + j;
+        document.getElementById(`tb-${gi}-${gj}`).classList.add('highlight-b');
+      }
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) document.getElementById(`tb-${i}-${j}`).classList.add('dim');
+    for (let i = 0; i < TILE; i++) for (let j = 0; j < TILE; j++) {
+      const gi = ev.phase * TILE + i;
+      const gj = ev.bx * TILE + j;
+      document.getElementById(`tb-${gi}-${gj}`).classList.remove('dim');
+    }
+    for (let i = 0; i < TILE; i++) for (let j = 0; j < TILE; j++) document.getElementById(`tsb-${i}-${j}`).classList.add('active-b');
+
+    document.getElementById('tiled-guide-title').textContent = `Block[${ev.by},${ev.bx}] — load B tile (phase ${ev.phase})`;
+    document.getElementById('tiled-guide-text').textContent = 
+      `All threads in block[${ev.by},${ev.bx}] cooperatively load a 2×2 tile of B from global memory into shared memory. ` +
+      `Another ${TILE*TILE} global reads. Now both tiles are in fast shared memory.`;
+  } else if (ev.type === 'compute') {
+    const row = ev.by * TILE + ev.ty;
+    const col = ev.bx * TILE + ev.tx;
+    document.getElementById(`ta-${row}-${ev.phase * TILE + ev.k}`).classList.add('source-a');
+    document.getElementById(`tb-${ev.phase * TILE + ev.k}-${col}`).classList.add('source-b');
+    document.getElementById(`tsa-${ev.ty}-${ev.k}`).classList.add('active');
+    document.getElementById(`tsb-${ev.k}-${ev.tx}`).classList.add('active-b');
+    document.getElementById(`tc-${row}-${col}`).classList.add('highlight-c');
+
+    for (let i = 0; i < TILE; i++) for (let j = 0; j < TILE; j++) {
+      if (!(i === ev.ty && j === ev.k)) document.getElementById(`tsa-${i}-${j}`).classList.add('dim');
+      if (!(i === ev.k && j === ev.tx)) document.getElementById(`tsb-${i}-${j}`).classList.add('dim');
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      if (!(i === row && j === col)) document.getElementById(`tc-${i}-${j}`).classList.add('dim');
+    }
+
+    document.getElementById('tiled-guide-title').textContent = `Block[${ev.by},${ev.bx}] thread[${ev.ty},${ev.tx}] — compute k=${ev.k}`;
+    document.getElementById('tiled-guide-text').textContent = 
+      `Thread[${ev.ty},${ev.tx}] reads sharedA[${ev.ty}][${ev.k}] = ${sharedA[ev.ty][ev.k]} and sharedB[${ev.k}][${ev.tx}] = ${sharedB[ev.k][ev.tx]} ` +
+      `from fast shared memory (not global!), multiplies and accumulates into C[${row}][${col}]. ` +
+      `Shared reads are ~100× faster than global reads.`;
+  }
+
+  document.getElementById('tiled-global').textContent = globalReads;
+  document.getElementById('tiled-shared').textContent = sharedReads;
+  document.getElementById('tiled-total').textContent = globalReads + sharedReads;
+  document.getElementById('tiled-step-text').textContent = `Step ${tiledStepIdx} of ${tiledEvents.length}`;
+
+  document.getElementById('tiled-prev').disabled = tiledStepIdx <= 0;
+  document.getElementById('tiled-next').disabled = tiledStepIdx >= tiledEvents.length;
+}
+
+function updateSharedGrids() {
+  for (let i = 0; i < TILE; i++) {
+    for (let j = 0; j < TILE; j++) {
+      document.getElementById(`tsa-${i}-${j}`).textContent = sharedA[i][j];
+      document.getElementById(`tsb-${i}-${j}`).textContent = sharedB[i][j];
+    }
+  }
+}
+
+function tiledStep(dir) {
+  tiledStepIdx = Math.max(0, Math.min(tiledEvents.length, tiledStepIdx + dir));
+  renderTiled();
+}
+
+function tiledReset() {
+  tiledStepIdx = 0;
+  tiledPlaying = false;
+  clearInterval(tiledTimer);
+  document.getElementById('tiled-play').textContent = '▶ Play';
+  renderTiled();
+}
+
+function tiledTogglePlay() {
+  tiledPlaying = !tiledPlaying;
+  document.getElementById('tiled-play').textContent = tiledPlaying ? '⏸ Pause' : '▶ Play';
+  if (tiledPlaying) {
+    tiledTimer = setInterval(() => {
+      if (tiledStepIdx >= tiledEvents.length) { tiledTogglePlay(); return; }
+      tiledStep(1);
+    }, 500);
+  } else {
+    clearInterval(tiledTimer);
+  }
+}
+
+renderNaive();
+renderTiled();
+</script>
+
+</body>
+</html>

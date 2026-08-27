@@ -1,0 +1,219 @@
+<h2 class="sr-only">Interactive grid of a CUDA kernel launch with a 4x4 grid of 2x2 thread blocks, 64 threads total. Hover any thread to see its global 1D id, blockIdx.x/y, and threadIdx.x/y.</h2>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&display=swap');
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    background: #171614;
+    color: #f5f1e8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .cuda-wrap {
+    --surface: #1f1e1b;
+    --surface-1: #292724;
+    --surface-2: #34312d;
+    --border: #514c45;
+    --border-accent: #d97757;
+    --fill-accent: #d97757;
+    --on-accent: #1f1e1b;
+    --text-primary: #f5f1e8;
+    --text-secondary: #d1cbc1;
+    --text-muted: #a39d94;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    --radius: 10px;
+
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 4px);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+  }
+  .cuda-title {
+    margin: 0 0 1.25rem;
+    color: var(--text-primary);
+    font-family: "Playfair Display", 'Times New Roman', serif;
+    font-size: clamp(1.25rem, 3vw, 1.6rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-align: center;
+  }
+  .cuda-wrap *, .cuda-wrap *::before, .cuda-wrap *::after {
+    box-sizing: border-box;
+  }
+  .cuda-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+  .cuda-block {
+    background: var(--surface-1);
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    transition: border-color 0.15s;
+  }
+  .cuda-block.active-block {
+    border-color: var(--border-accent);
+  }
+  .cuda-thread {
+    aspect-ratio: 1;
+    background: var(--surface-2);
+    border: 0.5px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, transform 0.1s;
+  }
+  .cuda-thread:hover, .cuda-thread.active-thread {
+    background: var(--fill-accent);
+    color: var(--on-accent);
+    transform: scale(1.06);
+  }
+  .cuda-thread:focus-visible {
+    outline: 2px solid var(--border-accent);
+    outline-offset: 2px;
+  }
+  .cuda-readout {
+    max-width: 460px;
+    margin: 1rem auto 0;
+    background: var(--surface-1);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    text-align: center;
+  }
+  .cuda-readout .lbl {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+  }
+  .cuda-readout .val {
+    font-size: 16px;
+    color: var(--text-primary);
+    margin-top: 2px;
+  }
+  .cuda-legend {
+    max-width: 460px;
+    margin: 0.75rem auto 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    text-align: center;
+  }
+  .cuda-formula {
+    max-width: 460px;
+    margin: 0.9rem auto 0;
+    padding: 0.65rem 0.75rem;
+    border-left: 2px solid var(--border-accent);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  .cuda-formula code {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+  }
+  @media (max-width: 480px) {
+    body { padding: 1rem 0.5rem; }
+    .cuda-wrap { padding: 0.75rem; }
+    .cuda-grid { gap: 6px; }
+    .cuda-block { padding: 4px; gap: 3px; }
+    .cuda-thread { font-size: 10px; }
+    .cuda-readout { grid-template-columns: repeat(2, 1fr); gap: 10px 4px; }
+    .cuda-formula { font-size: 10px; }
+  }
+</style>
+<div class="cuda-wrap">
+  <h1 class="cuda-title">CUDA Thread Grid</h1>
+  <div class="cuda-grid" id="grid"></div>
+  <div class="cuda-readout" id="readout">
+    <div><div class="lbl">global id</div><div class="val" id="v-id">-</div></div>
+    <div><div class="lbl">blockIdx.x, .y</div><div class="val" id="v-block">-</div></div>
+    <div><div class="lbl">threadIdx.x, .y</div><div class="val" id="v-thread">-</div></div>
+    <div><div class="lbl">block size</div><div class="val">2 x 2</div></div>
+  </div>
+  <div class="cuda-legend">4x4 grid of blocks, each block 2x2 threads. hover a cell.</div>
+  <div class="cuda-formula">
+    global index = <code>(blockIdx.y * gridDim.x + blockIdx.x) * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x</code>
+  </div>
+</div>
+<script>
+(function() {
+  const grid = document.getElementById('grid');
+  const vId = document.getElementById('v-id');
+  const vBlock = document.getElementById('v-block');
+  const vThread = document.getElementById('v-thread');
+
+  const gridDimX = 4, gridDimY = 4;
+  const blockDimX = 2, blockDimY = 2;
+
+  // Build blocks in row-major order over the grid (by.x then by.y)
+  for (let by = 0; by < gridDimY; by++) {
+    for (let bx = 0; bx < gridDimX; bx++) {
+      const blockEl = document.createElement('div');
+      blockEl.className = 'cuda-block';
+
+      for (let ty = 0; ty < blockDimY; ty++) {
+        for (let tx = 0; tx < blockDimX; tx++) {
+          // Global 2D coord, then flattened row-major across the whole grid
+          const globalX = bx * blockDimX + tx;
+          const globalY = by * blockDimY + ty;
+          const width = gridDimX * blockDimX;
+          const globalId = globalY * width + globalX;
+
+          const cell = document.createElement('div');
+          cell.className = 'cuda-thread';
+          cell.textContent = globalId;
+          cell.addEventListener('mouseenter', () => {
+            vId.textContent = globalId;
+            vBlock.textContent = bx + ', ' + by;
+            vThread.textContent = tx + ', ' + ty;
+            blockEl.classList.add('active-block');
+            cell.classList.add('active-thread');
+          });
+          cell.addEventListener('mouseleave', () => {
+            blockEl.classList.remove('active-block');
+            cell.classList.remove('active-thread');
+          });
+          blockEl.appendChild(cell);
+        }
+      }
+      grid.appendChild(blockEl);
+    }
+  }
+})();
+</script>
